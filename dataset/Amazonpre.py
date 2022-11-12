@@ -3,15 +3,17 @@ import torch
 
 import json
 import pandas as pd
+from transformers import BertTokenizer
+
+bart_path = "P:\Dataset\Bert-uncased"
 
 amazon_path = "P:\Dataset\\reviews\Amazon\\reviews_Wine\\reviews_Wine.json"
 output_path = "P:\TransformerGAN\\generator_output\\output.txt"
 
-max_seqLen = 50
+max_seqLen =150
 max_sumLen = 10
 
-word2id, id2word, id2rating = {}, [], []
-
+tokenizer = BertTokenizer.from_pretrained(bart_path)
 
 def get_data(path):
     with open(path, 'r') as data_file:
@@ -23,42 +25,24 @@ def get_data(path):
         df = pd.DataFrame(data)
     return df
 
-
-def get_vocab(df):
-    for text in df['allText']:
-        for word in text:
-            id2word.append(word)
-    word2id = {word: i for i, word in enumerate(id2word)}
-
-    for overall in df['overall']:
-        id2rating.append(int(overall))
-
-
 amazon_df = get_data(amazon_path)
-get_vocab(amazon_df)
 
 
 def getTokens(textList):
-    tokenList = ['<pad>']
+    tokenList = []
     for text in textList:
-        tokens = []
-        for t in text:
-            tokens.append(word2id[t])
+        tokens = tokenizer.tokenize(text)
+        tokens = tokenizer.convert_tokens_to_ids(tokens)
         tokenList.append(tokens)
     return tokenList
 
 
-def getPaddingAndMasks(tokenList, maxLen):
-    maskList = []
+def addPadding(tokenList, maxLen):
     for i in range(len(tokenList)):
         if len(tokenList[i]) < maxLen:
             tokenList[i] += [0] * (maxLen - len(tokenList[i]))
-            mask = [0] * len(tokenList[i]) + [1] * (maxLen - len(tokenList[i]))
         else:
             tokenList[i] = tokenList[i][:maxLen]
-            mask = [1] * maxLen
-        maskList.append(mask)
-    return maskList
 
 
 def get_iter(is_discrimination=False):
@@ -71,10 +55,9 @@ def get_iter(is_discrimination=False):
         textList = pos_text + neg_df['reviewText']
 
         tokenList = getTokens(textList)
-        maskList = getPaddingAndMasks(tokenList)
         labels = pos_labels + neg_labels
 
-        dis_dataset = DisDataset(tokenList, maskList, labels)
+        dis_dataset = DisDataset(tokenList, labels)
         return DataLoader(dis_dataset, batch_size=64, shuffle=True)
 
     else:
@@ -82,19 +65,19 @@ def get_iter(is_discrimination=False):
         pos_rating = amazon_df['overall']
 
         tokenList = getTokens(pos_text)
-        tokenMaskList = getPaddingAndMasks(tokenList, max_seqLen)
-        summaryTokenList = getTokens(pos_summary)
-        sumMaskList = getPaddingAndMasks(summaryTokenList, max_sumLen)
+        addPadding(tokenList, max_seqLen)
+        # tokenPaddingList = getPadding(tokenList, max_seqLen)
+        # summaryTokenList = getTokens(pos_summary)
+        # sumMaskList = getPaddingAndMasks(summaryTokenList, max_sumLen)
 
-        gan_dataset = GanDataset(tokenList, tokenMaskList , summaryTokenList, summaryTokenList, pos_rating)
+        gan_dataset = GanDataset(tokenList, pos_rating)
         return DataLoader(gan_dataset, batch_size=64, shuffle=True)
 
 
 # 鉴别器的数据集
 class DisDataset(Dataset):
-    def __init__(self, tokens, mask, labels=[]):
+    def __init__(self, tokens, labels):
         self.tokens = torch.tensor(tokens).long()
-        self.mask = torch.tensor(mask).long()
         self.labels = torch.tensor(labels).long()
 
     def __getitem__(self, index):
@@ -106,15 +89,12 @@ class DisDataset(Dataset):
 
 # 生成器的数据集
 class GanDataset(Dataset):
-    def __init__(self, tokens, tokenMask, summary, sumMask, rating):
+    def __init__(self, tokens, rating):
         self.tokens = torch.tensor(tokens).long()
-        self.tokenMask = torch.tensor(tokenMask).long()
-        self.summary = torch.tensor(summary).long()
-        self.sumMask = torch.tensor(sumMask).long()
         self.rating = torch.tensor(rating).long()
 
     def __getitem__(self, index):
-        return self.tokens[index], self.mask[index], self.summary[index], self.sumMask,self.rating[index]
+        return self.tokens[index], self.rating[index]
 
     def __len__(self):
         return self.rating.shape[0]
