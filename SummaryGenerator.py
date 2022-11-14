@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import dataset.AmazonPre as A
 
+from CrossEntropyMaskLoss import CEMLoss
 from Config import config
 
 device = config.device
@@ -22,11 +23,19 @@ class GneratorModel(nn.Module):
         self.posEmb = PositionalEncoding(config.emb_dim)
         self.transformer = nn.Transformer(config.emb_dim, batch_first=True)
 
+        self.lstm = nn.LSTM(config.emb_dim, config.emb_dim, batch_first=True)
+
         self.fc = nn.Sequential(
-            nn.Linear(config.emb_dim * (config.max_sumLen + 2), config.vocab_size),
+            nn.Linear(config.emb_dim, config.vocab_size),
             nn.Dropout(),
+            nn.BatchNorm1d(config.vocab_size),
             nn.Linear(config.vocab_size, config.vocab_size)
         )
+    def LinearMask(self, output):
+        outputMask = GneratorModel.getOutputPaddingMask(output)
+        output = output.masked_fill(outputMask, -1e-9)
+
+        return output
 
     def forward(self, src, tgt):
         tgt_mask = nn.Transformer.generate_square_subsequent_mask(tgt.size()[-1]).bool().to(device)
@@ -40,10 +49,14 @@ class GneratorModel(nn.Module):
         output = self.transformer(src, tgt, tgt_mask=tgt_mask,
                                   src_key_padding_mask=srcPaddingMask, tgt_key_padding_mask=tgtPaddingMask)
         output.transpose(0, 1)
-        output = output.reshape(-1, config.emb_dim)
+
+        output = output.reshape(-1,  config.emb_dim)
         output = self.fc(output)
-        softmax_output = F.softmax(output, dim=2)
-        return softmax_output
+        output = self.LinearMask(output)
+
+        print(output)
+
+        return F.softmax(output, dim=1)
 
     @staticmethod
     def getPaddingMask(tokens):
@@ -51,8 +64,21 @@ class GneratorModel(nn.Module):
         用于padding_mask
         """
         paddingMask = torch.zeros(tokens.size())
-        paddingMask[tokens == 2] = -torch.inf
-        return paddingMask.to(device)
+        paddingMask[tokens == 2] = 1
+        return paddingMask.bool().to(device)
+
+    @staticmethod
+    # 给softmax output中的padding做mask
+    def getOutputPaddingMask(output):
+        """
+        用于padding_mask
+        """
+        paddingMask = torch.zeros(output.size())
+        paddingMask[:, 2] = 1
+        return paddingMask.bool().to(device)
+
+    @staticmethod
+    # 避免softmax梯度爆炸
 
     def generate_summary(self, test_src, test_tgt):
         """
@@ -105,41 +131,50 @@ if __name__ == '__main__':
 
     model = GneratorModel().to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.00000001)
 
     for epoch in range(20):
         train_acc, train_sum, batch_num, loss_sum = 0, 0, 0, 0.0
         for inputs, sumX, sumY in data_iter:
             inputs, sumX, sumY = inputs.to(device), sumX.to(device), sumY.to(device)
-            outputs = model(inputs, sumX)
 
-            loss = criterion(outputs.contiguous().reshape(-1, outputs.size(-1)),
-                             sumY.contiguous().view(-1)) / config.valid_rev_token_num
+            # (batch * len, vocab_size)
+            outputs = model(inputs, sumX)
+            outputs.argmax(dim=1)
+
+            # (batch * len, 1)
+            sumY = sumY.view(-1)
+
+            loss = criterion(outputs, sumY) / config.valid_sum_token_num
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
             loss_sum += loss.item()
             batch_num += 1
+            print(loss_sum)
 
-        if epoch % 5 == 0:
-            test_sum = 0
-            seed = [randint(0, batch_num - 1) for _ in range(batch_num // 10 * 3)]
-            print(seed)
-            with torch.no_grad():
-                for idx, (inputs, sumX, sumY) in enumerate(data_iter):
-                    if idx in seed:
-                        inputs, sumX, sumY = inputs.to(device), sumX.to(device), sumY.to(device)
-                        outputs = model(inputs, sumX)
+        # if epoch % 5 == 0:
+        #     test_sum = 0
+        #     seed = [randint(0, batch_num - 1) for _ in range(batch_num // 10 * 3)]
+        #     print(seed)
+        #     with torch.no_grad():
+        #         for idx, (inputs, sumX, sumY) in enumerate(data_iter):
+        #             if idx in seed:
+        #                 inputs, sumX, sumY = inputs.to(device), sumX.to(device), sumY.to(device)
+        #                 outputs = model(inputs, sumX)
+        #
+        #                 outputs = outputs.view(-1, outputs.size(-1))
+        #                 # (batch * len, 1)
+        #                 sumY = sumY.view(-1)
+        #
+        #                 loss = criterion(outputs, sumY, mask_index=2) / config.valid_sum_token_num
+        #
+        #                 test_sum += loss.sum().item()
+        #
+        #     print(loss_sum, test_sum)
 
-                        loss = criterion(outputs.contiguous().reshape(-1, outputs.size(-1)),
-                                         sumY.contiguous().view(-1)) / config.valid_rev_token_num
-
-                        test_sum += loss.sum().item()
-
-            print(loss_sum, test_sum)
-
-    testSrcList = ["the wine is very bad don t buy it"]
+    testSrcList = [" i love it it is the new favorite for me my girlfriends and now my sister"]
     testTgtList = [[0]]
 
     tokenSrcList = A.getTokens(testSrcList)

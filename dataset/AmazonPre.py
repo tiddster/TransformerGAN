@@ -93,11 +93,9 @@ def get_gan_iter():
     addPadding(sumTokenList, max_sumLen)
 
     sumTokenList = torch.tensor(sumTokenList)
-    sumTokenListY = sumTokenList[:, 1:]
-    sumTokenListX = sumTokenList[:, :-1]
 
-    gan_dataset = GanDataset(revTokenList, sumTokenListX, sumTokenListY)
-    return DataLoader(gan_dataset, batch_size=32, shuffle=True, num_workers=1)
+    gan_dataset = GanDataset(revTokenList, sumTokenList, sumTokenList)
+    return DataLoader(gan_dataset, batch_size=4, shuffle=True, num_workers=1)
 
 
 def get_summary_iter():
