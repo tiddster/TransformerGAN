@@ -4,6 +4,8 @@ from random import randint
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+import CrossEntropyMaskLoss
 import dataset.AmazonPre as A
 
 from CrossEntropyMaskLoss import CEMLoss
@@ -21,9 +23,9 @@ class GneratorModel(nn.Module):
         super(GneratorModel, self).__init__()
         self.Embedding = nn.Embedding(config.vocab_size, config.emb_dim)
         self.posEmb = PositionalEncoding(config.emb_dim)
-        self.transformer = nn.Transformer(config.emb_dim, batch_first=True)
+        self.transformer = nn.Transformer(config.emb_dim, num_encoder_layers=2, num_decoder_layers=2, batch_first=True)
 
-        self.lstm = nn.LSTM(config.emb_dim, config.emb_dim, batch_first=True)
+        self.LSTM = nn.LSTM(config.emb_dim, config.emb_dim, batch_first=True)
 
         self.fc = nn.Sequential(
             nn.Linear(config.emb_dim, config.vocab_size),
@@ -33,7 +35,7 @@ class GneratorModel(nn.Module):
         )
     def LinearMask(self, output):
         outputMask = GneratorModel.getOutputPaddingMask(output)
-        output = output.masked_fill(outputMask, -1e-9)
+        output = output.masked_fill(outputMask, -1e9)
 
         return output
 
@@ -48,13 +50,15 @@ class GneratorModel(nn.Module):
 
         output = self.transformer(src, tgt, tgt_mask=tgt_mask,
                                   src_key_padding_mask=srcPaddingMask, tgt_key_padding_mask=tgtPaddingMask)
-        output.transpose(0, 1)
+
+        lstm_output, (h, _) = self.LSTM(output)
+
+        output = lstm_output.transpose(0,1)
+        print(lstm_output)
 
         output = output.reshape(-1,  config.emb_dim)
         output = self.fc(output)
         output = self.LinearMask(output)
-
-        print(output)
 
         return F.softmax(output, dim=1)
 
@@ -64,8 +68,8 @@ class GneratorModel(nn.Module):
         用于padding_mask
         """
         paddingMask = torch.zeros(tokens.size())
-        paddingMask[tokens == 2] = 1
-        return paddingMask.bool().to(device)
+        paddingMask[tokens == 2] = -1e9
+        return paddingMask.to(device)
 
     @staticmethod
     # 给softmax output中的padding做mask
@@ -78,8 +82,6 @@ class GneratorModel(nn.Module):
         return paddingMask.bool().to(device)
 
     @staticmethod
-    # 避免softmax梯度爆炸
-
     def generate_summary(self, test_src, test_tgt):
         """
         每次只能预测一个句子
@@ -130,8 +132,8 @@ if __name__ == '__main__':
     data_iter = A.get_gan_iter()
 
     model = GneratorModel().to(device)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.00000001)
+    criterion = CrossEntropyMaskLoss.CEMLoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=3e-6, weight_decay=0.00001)
 
     for epoch in range(20):
         train_acc, train_sum, batch_num, loss_sum = 0, 0, 0, 0.0

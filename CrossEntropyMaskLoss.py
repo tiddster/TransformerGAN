@@ -26,6 +26,11 @@ class CEMLoss(torch.nn.Module):
         return loss
 
     @staticmethod
+    def reScale(data):
+        _range = torch.max(data) - torch.min(data) + 1e-5
+        return 0.1 + ((data - torch.min(data)) / _range) * 0.9
+
+    @staticmethod
     def logits_mask(logits):
         logitsMask = torch.zeros(logits.shape)
         logitsMask[:, 1] = 1
