@@ -51,16 +51,16 @@ class GneratorModel(nn.Module):
         output = self.transformer(src, tgt, tgt_mask=tgt_mask,
                                   src_key_padding_mask=srcPaddingMask, tgt_key_padding_mask=tgtPaddingMask)
 
-        lstm_output, (h, _) = self.LSTM(output)
-
-        output = lstm_output.transpose(0,1)
-        print(lstm_output)
-
-        output = output.reshape(-1,  config.emb_dim)
-        output = self.fc(output)
-        output = self.LinearMask(output)
-
-        return F.softmax(output, dim=1)
+        # lstm_output, (h, _) = self.LSTM(output)
+        #
+        # output = lstm_output.transpose(0,1)
+        # print(lstm_output)
+        #
+        # output = output.reshape(-1,  config.emb_dim)
+        # output = self.fc(output)
+        # output = self.LinearMask(output)
+        print(output.shape)
+        return output
 
     @staticmethod
     def getPaddingMask(tokens):
@@ -132,7 +132,7 @@ if __name__ == '__main__':
     data_iter = A.get_gan_iter()
 
     model = GneratorModel().to(device)
-    criterion = CrossEntropyMaskLoss.CEMLoss()
+    criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=3e-6, weight_decay=0.00001)
 
     for epoch in range(20):
@@ -142,10 +142,13 @@ if __name__ == '__main__':
 
             # (batch * len, vocab_size)
             outputs = model(inputs, sumX)
-            outputs.argmax(dim=1)
+            outputs = outputs.reshape(-1, config.emb_dim)
 
             # (batch * len, 1)
             sumY = sumY.view(-1)
+
+            print(outputs.shape)
+            print(sumY.shape)
 
             loss = criterion(outputs, sumY) / config.valid_sum_token_num
             optimizer.zero_grad()

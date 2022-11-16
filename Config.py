@@ -11,7 +11,7 @@ class Config():
         self.valid_sum_token_num = 0
         self.valid_rev_token_num = 0
 
-        self.emb_dim = 8
+        self.emb_dim = 128
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

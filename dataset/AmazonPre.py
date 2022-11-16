@@ -82,21 +82,24 @@ def get_gan_iter():
     print("222")
     revTokenList = getTokens(revText)
     addPadding(revTokenList, max_seqLen)
+    revTokenList = torch.tensor(revTokenList)
+    revTokenListX = revTokenList[:, :-1]
+    revTokenListY = revTokenList[:, 1:]
 
     for list in revTokenList:
         for t in list:
             if t != 2:
                 config.valid_rev_token_num += 1
 
-    print("333")
-    sumTokenList = getTokens(sumText)
-    addPadding(sumTokenList, max_sumLen)
+    # print("333")
+    # sumTokenList = getTokens(sumText)
+    # addPadding(sumTokenList, max_sumLen)
+    #
+    # sumTokenList = torch.tensor(sumTokenList)
+    # sumTokenListX = sumTokenList[:, :-1]
+    # sumTokenListY = sumTokenList[:, 1:]
 
-    sumTokenList = torch.tensor(sumTokenList)
-    sumTokenListX = sumTokenList[:, :-1]
-    sumTokenListY = sumTokenList[:, 1:]
-
-    gan_dataset = GanDataset(revTokenList, sumTokenListX, sumTokenListY)
+    gan_dataset = GanDataset(revTokenList, revTokenList, revTokenList)
     return DataLoader(gan_dataset, batch_size=1, shuffle=True, num_workers=1)
 
 
