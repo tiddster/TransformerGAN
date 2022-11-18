@@ -1,6 +1,8 @@
 from torch.utils.data import Dataset, DataLoader
 import torch
 import string
+import numpy as np
+from sklearn.model_selection import train_test_split
 
 import json
 import pandas as pd
@@ -104,28 +106,53 @@ def get_gan_iter():
 
 
 def get_summary_iter():
-    rating = amazon_df['overall'] - 1
-    newRating = []
-    for r in rating:
+    ratingList = amazon_df['overall'] - 1
+    sumList = amazon_df['summary']
+
+    sumList, ratingList = timesData([0, 1.0], sumList, ratingList, 15)
+    sumList, ratingList = timesData([2.0], sumList, ratingList, 20)
+
+    newRatingList = []
+    for r in ratingList:
         if r == 0 or r == 1:
-            newRating.append(0)
+            newRatingList.append(0)
         elif r == 2:
-            newRating.append(1)
+            newRatingList.append(1)
         else:
-            newRating.append(2)
-    summary = amazon_df['summary']
+            newRatingList.append(2)
+
+    print(newRatingList.count(0))
+    print(newRatingList.count(1))
+    print(newRatingList.count(2))
 
     # 计算有效token量，防止计算出来的loss偏大
-    for list in summary:
-        for t in list:
-            if t != 2:
-                config.valid_sum_token_num += 1
+    # for list in sumList:
+    #     for t in list:
+    #         if t != 2:
+    #             config.valid_sum_token_num += 1
 
-    tokenList = getTokens(summary)
+    tokenList = getTokens(sumList)
     addPadding(tokenList, max_sumLen)
-    sumDataset = SummaryDataset(tokenList, newRating)
-    return DataLoader(sumDataset, batch_size=1, shuffle=True, num_workers=1)
 
+    tokenList, newRatingList = np.array(tokenList), np.array(newRatingList)
+    trainTokenList, testTokenList, trainRatingList, testRatingList = train_test_split(tokenList, newRatingList,  test_size = 0.3, random_state = 7)
+
+    sumTrainDataset = SummaryDataset(trainTokenList, trainRatingList)
+    sumTestDataset = SummaryDataset(testTokenList, testRatingList)
+    return DataLoader(sumTrainDataset, batch_size=1, shuffle=True, num_workers=1), DataLoader(sumTestDataset, batch_size=1, shuffle=True, num_workers=1)
+
+# 扩充标签类较少的数据集
+def timesData(aimRatings=[], textList=[], ratingList=[], times=0):
+    newTextList = []
+    newRatingList = []
+    for text, r in zip(textList, ratingList):
+        if r in aimRatings:
+            newTextList = newTextList + [text] * times
+            newRatingList = newRatingList + [r] * times
+        else:
+            newTextList.append(text)
+            newRatingList.append(r)
+    return newTextList, newRatingList
 
 class SummaryDataset(Dataset):
     def __init__(self, sumTokens, ratings):
