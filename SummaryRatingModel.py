@@ -93,9 +93,9 @@ if __name__ == '__main__':
     srm = SRModel().to(device)
     data_iter, test_iter = A.get_summary_iter()
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(srm.parameters(), lr=0.00003)
+    optimizer = torch.optim.Adam(srm.parameters(), lr=0.00004)
 
-    for epoch in range(8):
+    for epoch in range(15):
         train_acc, train_sum, batch_num, loss_sum, start_time = 0, 0, 0, 0.0, time.time()
         for inputs, ratings in data_iter:
             inputs, ratings = inputs.to(device), ratings.to(device)

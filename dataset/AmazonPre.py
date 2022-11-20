@@ -9,7 +9,7 @@ import pandas as pd
 
 from Config import config
 
-amazon_path = "P:\Dataset\\reviews\Amazon\\reviews_Wine\\reviews_Wine.json"
+amazon_path = "P:\Dataset\\reviews\Amazon\\reviews_Computers.json\\reviews_Computers.json"
 output_path = "P:\TransformerGAN\\generator_output\\output.txt"
 
 max_seqLen = config.max_seqLen
@@ -109,8 +109,8 @@ def get_summary_iter():
     ratingList = amazon_df['overall'] - 1
     sumList = amazon_df['summary']
 
-    sumList, ratingList = timesData([0, 1.0], sumList, ratingList, 15)
-    sumList, ratingList = timesData([2.0], sumList, ratingList, 20)
+    sumList, ratingList = timesData([0, 1.0], sumList, ratingList,4)
+    sumList, ratingList = timesData([2.0], sumList, ratingList, 9)
 
     newRatingList = []
     for r in ratingList:
